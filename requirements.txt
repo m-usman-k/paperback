@@ -1,0 +1,5 @@
+Flask==3.0.3
+SQLAlchemy==2.0.50
+requests==2.32.3
+PyMuPDF==1.27.2
+Werkzeug==3.0.3

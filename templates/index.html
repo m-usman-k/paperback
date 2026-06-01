@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paper Library</title>
+  <meta name="description" content="A local, offline-first research paper library with arXiv integration, tagging, full-text search, and inline PDF viewer.">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Top bar -->
+  <header id="topbar">
+    <span class="brand">Paper<span>Library</span></span>
+
+    <div id="search-wrap">
+      <svg class="ico-search" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input id="search-input" type="search" placeholder="Search library" autocomplete="off"
+             aria-label="Search papers by title, authors or text">
+      <span class="kbd-hint">/</span>
+    </div>
+
+    <button id="btn-hf" type="button">HuggingFace Papers</button>
+  </header>
+
+  <!-- Sidebar -->
+  <aside id="sidebar" aria-label="Tag filter">
+    <h2>Tags</h2>
+    <div id="sidebar-tags"></div>
+
+    <div id="add-tag-row">
+      <input id="tag-name-input" type="text" placeholder="New tag name" maxlength="40"
+             aria-label="New tag name">
+      <div id="colour-row" class="colour-row" aria-label="Choose tag colour"></div>
+      <button id="btn-add-tag" type="button">Add Tag</button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main id="main">
+
+    <!-- Drop zone -->
+    <section id="drop-zone" role="button" tabindex="0" aria-label="Drop a PDF here to add it to your library">
+      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <strong>Drop a PDF here</strong>
+      <span>or click to browse - arXiv papers only</span>
+    </section>
+
+    <!-- Upload progress -->
+    <div id="upload-progress" aria-live="polite">
+      <div class="bar-wrap"><div class="bar"></div></div>
+      <div class="label">Uploading…</div>
+    </div>
+
+    <!-- Paper list -->
+    <section id="paper-list" aria-label="Library papers" aria-live="polite"></section>
+
+    <!-- Empty state -->
+    <div id="empty-state" aria-live="polite">
+      <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      <p>Your library is empty. Drop a PDF above to get started.</p>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container" aria-live="polite"></div>
+
+<script src="{{ url_for('static', filename='main.js') }}"></script>
+</body>
+</html>
