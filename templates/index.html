@@ -61,6 +61,18 @@
       <div class="label">Uploading…</div>
     </div>
 
+    <!-- Bulk Actions -->
+    <div id="bulk-actions" style="display: none; align-items: center; justify-content: space-between; padding: 12px; margin-bottom: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px;">
+      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: var(--text); font-size: 14px; font-weight: 500;">
+        <input type="checkbox" id="cb-select-all" aria-label="Select all papers" style="width: 16px; height: 16px; margin: 0; cursor: pointer; accent-color: var(--accent);">
+        Select All
+      </label>
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <span id="bulk-selected-count" style="font-size: 13px; color: var(--muted); font-weight: 500;">0 selected</span>
+        <button id="btn-bulk-delete" style="background: #EF4444; color: white; padding: 6px 12px; font-size: 13px; border-radius: 6px; font-weight: 600; display: none;">Delete Selected</button>
+      </div>
+    </div>
+
     <!-- Paper list -->
     <section id="paper-list" aria-label="Library papers" aria-live="polite"></section>
 

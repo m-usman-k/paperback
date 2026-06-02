@@ -1,10 +1,12 @@
 import os
 import re
 import json
+import base64
 import shutil
 import time
 import datetime
 import requests
+import concurrent.futures
 import xml.etree.ElementTree as ET
 
 import fitz  # PyMuPDF
@@ -16,6 +18,7 @@ from flask import (
     jsonify,
     send_from_directory,
     abort,
+    Response,
 )
 from sqlalchemy import (
     create_engine,
@@ -329,19 +332,48 @@ def delete_paper(paper_id):
         os.remove(pdf_path)
     return "", 204
 
+@app.route("/api/papers/batch", methods=["DELETE"])
+def delete_papers_batch():
+    data = request.get_json(silent=True) or {}
+    paper_ids = data.get("ids", [])
+    if not paper_ids:
+        return "", 204
+        
+    with Session(engine) as s:
+        papers = s.query(Paper).filter(Paper.id.in_(paper_ids)).all()
+        for paper in papers:
+            pdf_path = os.path.join(PDF_DIR, f"{paper.arxiv_id}.pdf")
+            s.delete(paper)
+            if os.path.exists(pdf_path):
+                try:
+                    os.remove(pdf_path)
+                except OSError:
+                    pass
+        s.commit()
+    return "", 204
+
 
 # ------------------------------------------------------------------
 # PDF serving
 # ------------------------------------------------------------------
 
-@app.route("/api/papers/<int:paper_id>/pdf")
-def serve_pdf(paper_id):
+@app.route("/api/papers/<int:paper_id>/data")
+def serve_pdf_data(paper_id):
     with Session(engine) as s:
         paper = s.get(Paper, paper_id)
         if not paper:
             abort(404)
         arxiv_id = paper.arxiv_id
-    return send_from_directory(PDF_DIR, f"{arxiv_id}.pdf", mimetype="application/pdf")
+        
+    pdf_path = os.path.join(PDF_DIR, f"{arxiv_id}.pdf")
+    if not os.path.exists(pdf_path):
+        abort(404)
+        
+    with open(pdf_path, "rb") as f:
+        # Prepend magic bytes so IDM doesn't recognize it as a PDF
+        raw_data = b"NOT_A_PDF_" + f.read()
+        
+    return Response(raw_data, mimetype="application/x-paperback-data")
 
 
 @app.route("/viewer/<int:paper_id>")
@@ -582,24 +614,50 @@ def hf_search():
         return jsonify([])
 
     try:
-        resp = requests.get(HF_PAPERS_API, params={"q": q}, timeout=10)
+        resp = requests.get("https://huggingface.co/api/quicksearch", params={"q": q, "type": "paper", "limit": 10}, timeout=10)
         resp.raise_for_status()
-        raw = resp.json()
+        raw = resp.json().get("papers", [])
     except requests.RequestException as exc:
         return jsonify({"error": str(exc)}), 502
 
+    def fetch_paper(item):
+        try:
+            p_resp = requests.get(f"https://huggingface.co/api/papers/{item['_id']}", timeout=5)
+            p_resp.raise_for_status()
+            return p_resp.json()
+        except:
+            return None
+
+    top_items = raw[:10]
+    papers_data = []
+    if top_items:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            papers_data = list(executor.map(fetch_paper, top_items))
+
     results = []
-    for item in raw[:20]:
-        paper = item.get("paper", item)
-        arxiv_id = paper.get("id", "")
-        title = paper.get("title", "")
-        authors_raw = paper.get("authors", [])
-        authors = (
-            [a.get("name", a) if isinstance(a, dict) else a for a in authors_raw]
-            if isinstance(authors_raw, list)
-            else []
-        )
-        results.append({"arxiv_id": arxiv_id, "title": title, "authors": authors})
+    with Session(engine) as s:
+        for p_data in papers_data:
+            if not p_data:
+                continue
+            
+            arxiv_id = p_data.get("id", "")
+            title = p_data.get("title", "")
+            authors_raw = p_data.get("authors", [])
+            authors = (
+                [a.get("name", a) if isinstance(a, dict) else a for a in authors_raw]
+                if isinstance(authors_raw, list)
+                else []
+            )
+            
+            clean_id = re.sub(r"v\d+$", "", arxiv_id) if arxiv_id else ""
+            in_library = s.query(Paper).filter_by(arxiv_id=clean_id).first() is not None if clean_id else False
+
+            results.append({
+                "arxiv_id": arxiv_id, 
+                "title": title, 
+                "authors": authors,
+                "in_library": in_library
+            })
 
     return jsonify(results)
 

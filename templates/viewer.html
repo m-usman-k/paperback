@@ -736,7 +736,12 @@
   // -------------------------------------------------------------------------
   async function init() {
     await fetchHighlights();
-    pdfDoc = await pdfjsLib.getDocument(`/api/papers/${PAPER.id}/pdf`).promise;
+    const pdfDataRes = await fetch(`/api/papers/${PAPER.id}/data`);
+    const buffer = await pdfDataRes.arrayBuffer();
+    // Slice off the "NOT_A_PDF_" prefix (10 bytes)
+    const pdfBuffer = buffer.slice(10);
+    
+    pdfDoc = await pdfjsLib.getDocument({ data: pdfBuffer }).promise;
     updateNav();
     for (let i = 1; i <= Math.min(3, pdfDoc.numPages); i++) {
       await renderPage(i);

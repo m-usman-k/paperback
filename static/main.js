@@ -31,6 +31,10 @@
   const colourRow      = document.getElementById('colour-row');
   const btnAddTag      = document.getElementById('btn-add-tag');
   const btnHf          = document.getElementById('btn-hf');
+  const bulkActions       = document.getElementById('bulk-actions');
+  const cbSelectAll       = document.getElementById('cb-select-all');
+  const bulkSelectedCount = document.getElementById('bulk-selected-count');
+  const btnBulkDelete     = document.getElementById('btn-bulk-delete');
 
   // -----------------------------------------------------------------------
   // API helpers
@@ -121,6 +125,7 @@
 
     if (visible.length === 0) {
       emptyState.style.display = '';
+      updateBulkActionsUI();
       return;
     }
     emptyState.style.display = 'none';
@@ -141,7 +146,7 @@
       row.className = 'paper-row';
       row.dataset.paperId = paper.id;
       row.innerHTML = `
-        <input type="checkbox" class="paper-checkbox" aria-label="Select paper">
+        <input type="checkbox" class="paper-checkbox" aria-label="Select paper" data-paper-id="${paper.id}">
         <div class="paper-body">
           <div class="paper-title" tabindex="0" role="button"
                aria-label="Open ${esc(paper.title)}"
@@ -201,6 +206,26 @@
 
       paperList.appendChild(row);
     });
+    
+    updateBulkActionsUI();
+  }
+  
+  function updateBulkActionsUI() {
+    const visible = filterPapers();
+    if (visible.length === 0) {
+      bulkActions.style.display = 'none';
+      return;
+    }
+    
+    bulkActions.style.display = 'flex';
+    const checkboxes = Array.from(document.querySelectorAll('.paper-checkbox'));
+    const checked = checkboxes.filter(cb => cb.checked);
+    
+    cbSelectAll.checked = checkboxes.length > 0 && checked.length === checkboxes.length;
+    cbSelectAll.indeterminate = checked.length > 0 && checked.length < checkboxes.length;
+    
+    bulkSelectedCount.textContent = `${checked.length} selected`;
+    btnBulkDelete.style.display = checked.length > 0 ? '' : 'none';
   }
 
   function filterPapers() {
@@ -304,8 +329,7 @@
       results.innerHTML = '';
       data.forEach(item => {
         const authorStr = Array.isArray(item.authors) ? item.authors.slice(0, 3).join(', ') : '';
-        const cleanId = (item.arxiv_id || '').replace(/v\d+$/, '');
-        const isExisting = papers.some(p => p.arxiv_id === cleanId);
+        const isExisting = item.in_library;
         
         const btnHtml = isExisting
           ? `<button class="btn-import" disabled style="background: #64748b; border-color: #64748b; color: white;">Already in library</button>`
@@ -482,6 +506,40 @@
   // HF button
   // -----------------------------------------------------------------------
   btnHf.addEventListener('click', openHfModal);
+
+  // -----------------------------------------------------------------------
+  // Bulk Actions Event Listeners
+  // -----------------------------------------------------------------------
+  
+  paperList.addEventListener('change', (e) => {
+    if (e.target.classList.contains('paper-checkbox')) {
+      updateBulkActionsUI();
+    }
+  });
+
+  cbSelectAll.addEventListener('change', (e) => {
+    const isChecked = e.target.checked;
+    document.querySelectorAll('.paper-checkbox').forEach(cb => {
+      cb.checked = isChecked;
+    });
+    updateBulkActionsUI();
+  });
+
+  btnBulkDelete.addEventListener('click', async () => {
+    const checkedIds = Array.from(document.querySelectorAll('.paper-checkbox'))
+      .filter(cb => cb.checked)
+      .map(cb => parseInt(cb.dataset.paperId));
+      
+    if (checkedIds.length === 0) return;
+    
+    if (!await customConfirm(`Delete ${checkedIds.length} selected paper(s)?`)) return;
+    
+    await api('DELETE', '/api/papers/batch', { ids: checkedIds });
+    toast(`Deleted ${checkedIds.length} paper(s)`);
+    cbSelectAll.checked = false;
+    cbSelectAll.indeterminate = false;
+    await loadPapers();
+  });
 
   // -----------------------------------------------------------------------
   // Utilities
