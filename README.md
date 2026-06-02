@@ -7,6 +7,7 @@ A lightweight, fully local web app for researchers. Drop any arXiv PDF onto the 
 - **Drag & drop import** — drop any arXiv PDF; metadata is fetched automatically
 - **Built-in PDF viewer** — open papers inline with text selection and persistent highlights
 - **Tag system** — six default colours; filter your library by tag
+- **Bulk management** — select multiple papers to batch delete from your library
 - **Full-text search** — searches title, authors, and extracted PDF body text; press `/` to focus
 - **Hugging Face import** — search HF papers and import with one click via the associated arXiv ID
 
