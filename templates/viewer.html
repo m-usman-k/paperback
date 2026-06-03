@@ -439,47 +439,62 @@
 
   async function renderPage(num) {
     if (renderedPages[num]) return;
-    const page = await pdfDoc.getPage(num);
-    const viewport = page.getViewport({ scale: SCALE });
+    renderedPages[num] = true; // placeholder to prevent concurrent duplicate rendering
+    
+    try {
+      const page = await pdfDoc.getPage(num);
+      const viewport = page.getViewport({ scale: SCALE });
 
-    const wrap = document.createElement('div');
-    wrap.className = 'pdf-page-wrap';
-    wrap.dataset.page = num;
-    wrap.style.width = viewport.width + 'px';
+      const wrap = document.createElement('div');
+      wrap.className = 'pdf-page-wrap';
+      wrap.dataset.page = num;
+      wrap.style.width = viewport.width + 'px';
 
-    const canvas = document.createElement('canvas');
-    canvas.width  = viewport.width;
-    canvas.height = viewport.height;
-    wrap.appendChild(canvas);
+      const canvas = document.createElement('canvas');
+      canvas.width  = viewport.width;
+      canvas.height = viewport.height;
+      wrap.appendChild(canvas);
 
-    // Text layer (z-index 2) - always interactive for select-and-highlight
-    const textLayerDiv = document.createElement('div');
-    textLayerDiv.className = 'textLayer';
-    textLayerDiv.style.setProperty('--scale-factor', SCALE);
-    wrap.appendChild(textLayerDiv);
+      // Text layer (z-index 2) - always interactive for select-and-highlight
+      const textLayerDiv = document.createElement('div');
+      textLayerDiv.className = 'textLayer';
+      textLayerDiv.style.setProperty('--scale-factor', SCALE);
+      wrap.appendChild(textLayerDiv);
 
-    // Highlight overlay (z-index 3) - click a rect to delete it
-    const hlLayer = document.createElement('div');
-    hlLayer.className = 'hl-layer';
-    hlLayer.dataset.page = num;
-    wrap.appendChild(hlLayer);
+      // Highlight overlay (z-index 3) - click a rect to delete it
+      const hlLayer = document.createElement('div');
+      hlLayer.className = 'hl-layer';
+      hlLayer.dataset.page = num;
+      wrap.appendChild(hlLayer);
 
-    container.appendChild(wrap);
+      // Insert wrap in correct order based on page number
+      const nextSibling = Array.from(container.children).find(child => {
+        return child.classList.contains('pdf-page-wrap') && parseInt(child.dataset.page) > num;
+      });
+      if (nextSibling) {
+        container.insertBefore(wrap, nextSibling);
+      } else {
+        container.appendChild(wrap);
+      }
 
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
 
-    // Render transparent text spans for selection
-    const textContent = await page.getTextContent();
-    const textLayer = pdfjsLib.renderTextLayer({
-      textContent,
-      container: textLayerDiv,
-      viewport,
-      textDivs: [],
-    });
-    await textLayer.promise;
+      // Render transparent text spans for selection
+      const textContent = await page.getTextContent();
+      const textLayer = pdfjsLib.renderTextLayer({
+        textContent,
+        container: textLayerDiv,
+        viewport,
+        textDivs: [],
+      });
+      await textLayer.promise;
 
-    renderedPages[num] = { wrap, canvas, hlLayer, textLayerDiv, viewport };
-    drawHighlightsOnPage(num);
+      renderedPages[num] = { wrap, canvas, hlLayer, textLayerDiv, viewport };
+      drawHighlightsOnPage(num);
+    } catch (err) {
+      delete renderedPages[num];
+      throw err;
+    }
   }
 
   // Draw saved highlights
