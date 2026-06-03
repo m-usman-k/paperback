@@ -184,9 +184,7 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
                 entry = root.find("atom:entry", NS)
                 if entry is not None:
                     title = (entry.findtext("atom:title", "", NS) or "").strip().replace("\n", " ")
-                    if title.lower() == "error" or "error:" in title.lower():
-                        logger.info(f"arXiv returned error entry for {clean_id} (will try fallback)")
-                    else:
+                    if title.lower() != "error" and "error:" not in title.lower():
                         authors = [
                             a.findtext("atom:name", "", NS).strip()
                             for a in entry.findall("atom:author", NS)
@@ -196,6 +194,7 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
                         primary = entry.find("{http://arxiv.org/schemas/atom}primary_category")
                         category = primary.get("term", "") if primary is not None else ""
 
+                        logger.info(f"Successfully fetched metadata for {clean_id} from arXiv")
                         return {
                             "arxiv_id": clean_id,
                             "title": title,
@@ -204,15 +203,12 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
                             "category": category,
                             "source": "arXiv",
                         }
-            except ET.ParseError as e:
-                logger.info(f"Failed to parse XML from arXiv for {clean_id} (will try fallback)")
-        else:
-            logger.info(f"arXiv API query rate-limited or failed for {clean_id} (will try fallback)")
+            except ET.ParseError:
+                pass
     except requests.RequestException:
-        logger.info(f"arXiv API query timed out or failed for {clean_id} (will try fallback)")
+        pass
 
     # 2. Fall back to Hugging Face API
-    logger.info(f"Falling back to Hugging Face API for metadata on {clean_id}...")
     try:
         hf_resp = requests.get(f"https://huggingface.co/api/papers/{clean_id}", timeout=10)
         if hf_resp.ok:
@@ -223,6 +219,7 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
             published = d.get("publishedAt", "")
             year = int(published[:4]) if published else None
             
+            logger.info(f"Successfully fetched metadata for {clean_id} from arXiv")
             return {
                 "arxiv_id": clean_id,
                 "title": d.get("title", ""),
@@ -231,10 +228,8 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
                 "category": "",
                 "source": "arXiv",
             }
-        else:
-            logger.error(f"HF API fallback failed for {clean_id} with status {hf_resp.status_code}")
-    except Exception as e:
-        logger.error(f"HF API fallback failed for {clean_id} due to error: {e}")
+    except Exception:
+        pass
 
     return None
 
