@@ -288,59 +288,92 @@
     async function doSearch() {
       const q = input.value.trim();
       if (!q) return;
-      results.innerHTML = '<p style="color:var(--muted);font-size:13px">Searching…</p>';
-      const data = await api('GET', `/api/hf/search?q=${encodeURIComponent(q)}`);
-      if (!Array.isArray(data)) {
-        results.innerHTML = '<p style="color:#DC2626;font-size:13px">Search failed.</p>';
-        return;
-      }
-      if (data.length === 0) {
-        results.innerHTML = '<p style="color:var(--muted);font-size:13px">No results.</p>';
-        return;
-      }
-      results.innerHTML = '';
-      data.forEach(item => {
-        const authorStr = Array.isArray(item.authors) ? item.authors.slice(0, 3).join(', ') : '';
-        const isExisting = item.in_library;
-        
-        const btnHtml = isExisting
-          ? `<button class="btn-import" disabled style="background: #64748b; border-color: #64748b; color: white;">Already in library</button>`
-          : `<button class="btn-import" data-arxiv-id="${esc(item.arxiv_id)}">Import</button>`;
-
-        const el = document.createElement('div');
-        el.className = 'hf-item';
-        el.innerHTML = `
-          <div>
-            <div class="hf-item-title">${esc(item.title)}</div>
-            <div class="hf-item-authors">${esc(authorStr)}</div>
-          </div>
-          ${btnHtml}`;
-        if (!isExisting) {
-          el.querySelector('.btn-import').addEventListener('click', async (e) => {
-            const btn = e.currentTarget;
-            btn.disabled = true;
-            btn.textContent = '…';
-            const res = await api('POST', '/api/hf/import', {
-              arxiv_id: item.arxiv_id,
-              title: item.title,
-              authors: item.authors,
-              year: item.year || null,
-            });
-            if (res && res.paper) {
-              toast(res.duplicate ? 'Already in library' : 'Paper imported', res.duplicate ? '' : 'success');
-              btn.textContent = res.duplicate ? 'Already in library' : 'Imported';
-              btn.style.background = '#64748b';
-              btn.style.borderColor = '#64748b';
-              await loadPapers();
-            } else {
-              toast('Import failed', 'error');
-              btn.textContent = 'Retry Import';
-              btn.disabled = false;
-            }
-          });
+      btnSearch.disabled = true;
+      btnSearch.textContent = 'Searching…';
+      input.disabled = true;
+      results.innerHTML = '<div class="spinner-loader"></div>';
+      try {
+        const data = await api('GET', `/api/hf/search?q=${encodeURIComponent(q)}`);
+        if (!Array.isArray(data)) {
+          results.innerHTML = '<p style="color:#DC2626;font-size:13px;text-align:center">Search failed.</p>';
+          return;
         }
-        results.appendChild(el);
-      });
+        if (data.length === 0) {
+          results.innerHTML = '<p style="color:var(--muted);font-size:13px;text-align:center">No results.</p>';
+          return;
+        }
+        results.innerHTML = '';
+        data.forEach(item => {
+          const authorStr = Array.isArray(item.authors) ? item.authors.slice(0, 3).join(', ') : '';
+          const isExisting = item.in_library;
+          
+          const btnHtml = isExisting
+            ? `<button class="btn-import" disabled style="background: #64748b; border-color: #64748b; color: white;">Already in library</button>`
+            : `<button class="btn-import" data-arxiv-id="${esc(item.arxiv_id)}">Import</button>`;
+
+          const el = document.createElement('div');
+          el.className = 'hf-item';
+          el.innerHTML = `
+            <div>
+              <div class="hf-item-title">${esc(item.title)}</div>
+              <div class="hf-item-authors">${esc(authorStr)}</div>
+            </div>
+            ${btnHtml}`;
+          if (!isExisting) {
+            el.querySelector('.btn-import').addEventListener('click', async (e) => {
+              const btn = e.currentTarget;
+              btn.disabled = true;
+              btn.textContent = 'Importing…';
+              btn.style.width = 'auto';
+
+              let timeElapsed = 0;
+              const interval = setInterval(() => {
+                timeElapsed += 1;
+                if (timeElapsed >= 3 && timeElapsed < 12) {
+                  btn.textContent = 'Querying arXiv…';
+                } else if (timeElapsed >= 12 && timeElapsed < 22) {
+                  btn.textContent = 'Retrying arXiv…';
+                } else if (timeElapsed >= 22) {
+                  btn.textContent = 'Downloading PDF…';
+                }
+              }, 1000);
+
+              try {
+                const res = await api('POST', '/api/hf/import', {
+                  arxiv_id: item.arxiv_id,
+                  title: item.title,
+                  authors: item.authors,
+                  year: item.year || null,
+                });
+                if (res && res.paper) {
+                  toast(res.duplicate ? 'Already in library' : 'Paper imported', res.duplicate ? '' : 'success');
+                  btn.textContent = res.duplicate ? 'Already in library' : 'Imported';
+                  btn.style.background = '#64748b';
+                  btn.style.borderColor = '#64748b';
+                  await loadPapers();
+                } else {
+                  toast('Import failed', 'error');
+                  btn.textContent = 'Retry Import';
+                  btn.disabled = false;
+                }
+              } catch {
+                toast('Import failed', 'error');
+                btn.textContent = 'Retry Import';
+                btn.disabled = false;
+              } finally {
+                clearInterval(interval);
+              }
+            });
+          }
+          results.appendChild(el);
+        });
+      } catch (err) {
+        results.innerHTML = '<p style="color:#DC2626;font-size:13px;text-align:center">Search failed.</p>';
+      } finally {
+        btnSearch.disabled = false;
+        btnSearch.textContent = 'Search';
+        input.disabled = false;
+      }
     }
 
     btnSearch.addEventListener('click', doSearch);
@@ -390,7 +423,20 @@
 
   async function uploadFile(file) {
     uploadProgress.style.display = '';
-    uploadProgress.querySelector('.label').textContent = `Uploading ${file.name}…`;
+    const label = uploadProgress.querySelector('.label');
+    label.textContent = `Uploading ${file.name}…`;
+
+    let timeElapsed = 0;
+    const interval = setInterval(() => {
+      timeElapsed += 1;
+      if (timeElapsed >= 3 && timeElapsed < 12) {
+        label.textContent = `Processing ${file.name}: Querying arXiv for metadata…`;
+      } else if (timeElapsed >= 12 && timeElapsed < 22) {
+        label.textContent = `Processing ${file.name}: arXiv is slow, retrying query…`;
+      } else if (timeElapsed >= 22) {
+        label.textContent = `Processing ${file.name}: arXiv timed out, falling back to Hugging Face…`;
+      }
+    }, 1000);
 
     const fd = new FormData();
     fd.append('file', file);
@@ -408,6 +454,7 @@
     } catch {
       toast('Upload failed', 'error');
     } finally {
+      clearInterval(interval);
       uploadProgress.style.display = 'none';
     }
   }
