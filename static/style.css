@@ -737,7 +737,7 @@ button {
 #toast-container {
   position: fixed;
   bottom: 24px;
-  right: 24px;
+  left: calc(var(--sidebar-w) + 24px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -766,7 +766,7 @@ button {
 
 @keyframes slideToast {
   from {
-    transform: translateX(20px);
+    transform: translateX(-20px);
     opacity: 0;
   }
 
