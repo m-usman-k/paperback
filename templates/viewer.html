@@ -284,23 +284,17 @@
   pdfjsLib.GlobalWorkerOptions.workerSrc =
     'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 
-  // -------------------------------------------------------------------------
   // Paper data from server
-  // -------------------------------------------------------------------------
   const PAPER = {{ paper | tojson }};
 
-  // -------------------------------------------------------------------------
   // Meta line
-  // -------------------------------------------------------------------------
   const authStr = Array.isArray(PAPER.authors)
     ? PAPER.authors.slice(0, 4).join(', ') + (PAPER.authors.length > 4 ? ' et al.' : '')
     : PAPER.authors;
   document.getElementById('paper-meta').textContent =
     [authStr, PAPER.category, PAPER.year].filter(Boolean).join(' · ');
 
-  // -------------------------------------------------------------------------
   // Highlight colours
-  // -------------------------------------------------------------------------
   const HL_COLOURS = [
     'rgba(255,235,59,0.45)',
     'rgba(134,239,172,0.45)',
@@ -310,9 +304,7 @@
   ];
   const HL_HEX = ['#FFEB3B', '#86EFAC', '#93C5FD', '#FDA4AF', '#C4B5FD'];
 
-  // -------------------------------------------------------------------------
   // Existing highlights & Undo/Redo
-  // -------------------------------------------------------------------------
   let highlights = [];
   let undoStack = [];
   let redoStack = [];
@@ -434,9 +426,7 @@
     highlights = await res.json();
   }
 
-  // -------------------------------------------------------------------------
   // PDF rendering
-  // -------------------------------------------------------------------------
   const container = document.getElementById('pdf-container');
   const pageInfo  = document.getElementById('page-info');
   const btnPrev   = document.getElementById('btn-prev');
@@ -492,9 +482,7 @@
     drawHighlightsOnPage(num);
   }
 
-  // -------------------------------------------------------------------------
   // Draw saved highlights
-  // -------------------------------------------------------------------------
   function drawHighlightsOnPage(pageNum) {
     const info = renderedPages[pageNum];
     if (!info) return;
@@ -534,9 +522,7 @@
       });
   }
 
-  // -------------------------------------------------------------------------
   // Text-selection highlight toolbar
-  // -------------------------------------------------------------------------
   let activeToolbar = null;
 
   function removeToolbar() {
@@ -669,9 +655,7 @@
     }, 10);
   });
 
-  // -------------------------------------------------------------------------
   // Page navigation
-  // -------------------------------------------------------------------------
   function updateNav() {
     pageInfo.textContent = `${currentPage} / ${pdfDoc.numPages}`;
     btnPrev.disabled = currentPage <= 1;
@@ -731,9 +715,7 @@
     }
   });
 
-  // -------------------------------------------------------------------------
   // Boot
-  // -------------------------------------------------------------------------
   async function init() {
     await fetchHighlights();
     const pdfDataRes = await fetch(`/api/papers/${PAPER.id}/data`);

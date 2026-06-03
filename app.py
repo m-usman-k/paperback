@@ -8,6 +8,8 @@ import datetime
 import requests
 import concurrent.futures
 import xml.etree.ElementTree as ET
+import logging
+import uuid
 
 import fitz  # PyMuPDF
 
@@ -20,6 +22,7 @@ from flask import (
     abort,
     Response,
 )
+from werkzeug.exceptions import RequestEntityTooLarge
 from sqlalchemy import (
     create_engine,
     Column,
@@ -33,9 +36,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, relationship, Session
 
-# ---------------------------------------------------------------------------
 # Paths
-# ---------------------------------------------------------------------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -44,9 +45,10 @@ DB_PATH = os.path.join(DATA_DIR, "library.db")
 
 os.makedirs(PDF_DIR, exist_ok=True)
 
-# ---------------------------------------------------------------------------
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 # Database
-# ---------------------------------------------------------------------------
 
 engine = create_engine(f"sqlite:///{DB_PATH}", echo=False)
 
@@ -136,9 +138,7 @@ with Session(engine) as _s:
             _s.add(Tag(name=name, colour=colour, display_order=i))
     _s.commit()
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 ARXIV_ID_RE = re.compile(r"\b(\d{4}\.\d{4,5}(?:v\d+)?)\b")
 ARXIV_API = "https://export.arxiv.org/api/query"
@@ -172,23 +172,28 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
                 params={"id_list": clean_id, "max_results": 1},
                 timeout=10,
             )
-        except requests.RequestException:
+        except requests.RequestException as e:
+            logger.error(f"Network error fetching metadata for {clean_id}: {e}")
             return None
 
-        if resp.status_code == 429:
+        if resp.status_code == 429 or "Rate exceeded" in resp.text:
+            logger.warning(f"Rate limited by arXiv for {clean_id}. Retrying in {3 * (attempt + 1)}s...")
             time.sleep(3 * (attempt + 1))
             continue
 
         if not resp.ok:
+            logger.error(f"arXiv API returned {resp.status_code} for {clean_id}")
             return None
 
         try:
             root = ET.fromstring(resp.text)
-        except ET.ParseError:
+        except ET.ParseError as e:
+            logger.error(f"Failed to parse XML for {clean_id}. Error: {e}")
             return None
 
         entry = root.find("atom:entry", NS)
         if entry is None:
+            logger.error(f"No entry found in arXiv response for {clean_id}")
             return None
 
         title = (entry.findtext("atom:title", "", NS) or "").strip().replace("\n", " ")
@@ -238,11 +243,15 @@ def _paper_to_dict(paper: Paper) -> dict:
         "tags": [{"id": t.id, "name": t.name, "colour": t.colour} for t in paper.tags],
     }
 
-# ---------------------------------------------------------------------------
 # Flask app
-# ---------------------------------------------------------------------------
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_size_error(e):
+    logger.warning("Upload rejected: file exceeds 50MB size limit")
+    return jsonify({"error": "File exceeds the 50MB size limit."}), 413
 
 
 @app.route("/")
@@ -250,9 +259,7 @@ def index():
     return render_template("index.html")
 
 
-# ------------------------------------------------------------------
 # Papers
-# ------------------------------------------------------------------
 
 @app.route("/api/papers", methods=["GET"])
 def list_papers():
@@ -282,41 +289,69 @@ def upload_pdf():
         return jsonify({"error": "No file provided"}), 400
 
     f = request.files["file"]
-    tmp_path = os.path.join(PDF_DIR, "_tmp_upload.pdf")
-    f.save(tmp_path)
+    
+    # Validate PDF magic bytes
+    header = f.read(4)
+    if header != b"%PDF":
+        logger.warning("Upload rejected: file is not a valid PDF")
+        return jsonify({"error": "Uploaded file is not a valid PDF"}), 400
+    f.seek(0)
 
-    arxiv_id = _extract_arxiv_id_from_pdf(tmp_path)
-    if not arxiv_id:
-        os.remove(tmp_path)
-        return jsonify({"error": "No arXiv ID found in this PDF"}), 422
+    tmp_filename = f"_tmp_{uuid.uuid4().hex}.pdf"
+    tmp_path = os.path.join(PDF_DIR, tmp_filename)
+    
+    try:
+        f.save(tmp_path)
 
-    meta = _fetch_arxiv_metadata(arxiv_id)
-    if not meta:
-        os.remove(tmp_path)
-        return jsonify({"error": "Could not fetch metadata from arXiv"}), 502
+        # Validate with fitz to ensure it's not corrupted
+        try:
+            doc = fitz.open(tmp_path)
+            doc.close()
+        except Exception as e:
+            logger.error(f"PyMuPDF failed to parse uploaded file: {e}")
+            return jsonify({"error": "Uploaded file is corrupted or not a valid PDF"}), 400
 
-    dest = os.path.join(PDF_DIR, f"{meta['arxiv_id']}.pdf")
-    shutil.move(tmp_path, dest)
-    body = _extract_body_text(dest)
+        arxiv_id = _extract_arxiv_id_from_pdf(tmp_path)
+        if not arxiv_id:
+            logger.info("Upload rejected: No arXiv ID found in PDF")
+            return jsonify({"error": "No arXiv ID found in this PDF"}), 422
 
-    with Session(engine) as s:
-        existing = s.query(Paper).filter_by(arxiv_id=meta["arxiv_id"]).first()
-        if existing:
-            return jsonify({"paper": _paper_to_dict(existing), "duplicate": True})
+        meta = _fetch_arxiv_metadata(arxiv_id)
+        if not meta:
+            logger.error(f"Upload failed: Could not fetch metadata for {arxiv_id}")
+            return jsonify({"error": "Could not fetch metadata from arXiv"}), 502
 
-        paper = Paper(
-            arxiv_id=meta["arxiv_id"],
-            title=meta["title"],
-            authors=json.dumps(meta["authors"]),
-            year=meta["year"],
-            category=meta["category"],
-            source=meta["source"],
-            body_text=body,
-        )
-        s.add(paper)
-        s.commit()
-        s.refresh(paper)
-        return jsonify({"paper": _paper_to_dict(paper), "duplicate": False}), 201
+        with Session(engine) as s:
+            existing = s.query(Paper).filter_by(arxiv_id=meta["arxiv_id"]).first()
+            if existing:
+                logger.info(f"Duplicate upload skipped for {meta['arxiv_id']}")
+                return jsonify({"paper": _paper_to_dict(existing), "duplicate": True}), 200
+
+            dest = os.path.join(PDF_DIR, f"{meta['arxiv_id']}.pdf")
+            shutil.move(tmp_path, dest)
+            body = _extract_body_text(dest)
+
+            paper = Paper(
+                arxiv_id=meta["arxiv_id"],
+                title=meta["title"],
+                authors=json.dumps(meta["authors"]),
+                year=meta["year"],
+                category=meta["category"],
+                source=meta["source"],
+                body_text=body,
+            )
+            s.add(paper)
+            s.commit()
+            s.refresh(paper)
+            logger.info(f"Successfully uploaded and imported paper {meta['arxiv_id']}")
+            return jsonify({"paper": _paper_to_dict(paper), "duplicate": False}), 201
+            
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 @app.route("/api/papers/<int:paper_id>", methods=["DELETE"])
@@ -353,9 +388,7 @@ def delete_papers_batch():
     return "", 204
 
 
-# ------------------------------------------------------------------
 # PDF serving
-# ------------------------------------------------------------------
 
 @app.route("/api/papers/<int:paper_id>/data")
 def serve_pdf_data(paper_id):
@@ -386,9 +419,7 @@ def viewer(paper_id):
     return render_template("viewer.html", paper=data)
 
 
-# ------------------------------------------------------------------
 # Tags
-# ------------------------------------------------------------------
 
 @app.route("/api/tags", methods=["GET"])
 def list_tags():
@@ -460,9 +491,7 @@ def remove_tag_from_paper(paper_id, tag_id):
         return jsonify(_paper_to_dict(paper))
 
 
-# ------------------------------------------------------------------
 # Highlights
-# ------------------------------------------------------------------
 
 @app.route("/api/papers/<int:paper_id>/highlights", methods=["GET"])
 def get_highlights(paper_id):
@@ -600,9 +629,7 @@ def delete_highlight_page(paper_id, page_num):
         return "", 204
 
 
-# ------------------------------------------------------------------
 # Hugging Face paper search
-# ------------------------------------------------------------------
 
 HF_PAPERS_API = "https://huggingface.co/api/papers"
 
@@ -727,7 +754,6 @@ def hf_import():
         return jsonify({"paper": _paper_to_dict(paper), "duplicate": False}), 201
 
 
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

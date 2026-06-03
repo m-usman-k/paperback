@@ -3,9 +3,7 @@
 (function () {
   'use strict';
 
-  // -----------------------------------------------------------------------
   // State
-  // -----------------------------------------------------------------------
   let papers = [];
   let tags = [];
   let activeTagId = null;
@@ -18,9 +16,7 @@
   ];
   let selectedColour = TAG_COLOURS[4]; // blue default
 
-  // -----------------------------------------------------------------------
   // DOM refs
-  // -----------------------------------------------------------------------
   const searchInput    = document.getElementById('search-input');
   const paperList      = document.getElementById('paper-list');
   const emptyState     = document.getElementById('empty-state');
@@ -36,9 +32,7 @@
   const bulkSelectedCount = document.getElementById('bulk-selected-count');
   const btnBulkDelete     = document.getElementById('btn-bulk-delete');
 
-  // -----------------------------------------------------------------------
   // API helpers
-  // -----------------------------------------------------------------------
   async function api(method, path, body) {
     const opts = { method, headers: {} };
     if (body !== undefined) {
@@ -50,9 +44,7 @@
     return res.json();
   }
 
-  // -----------------------------------------------------------------------
   // Toast
-  // -----------------------------------------------------------------------
   function toast(msg, type = '') {
     const el = document.createElement('div');
     el.className = 'toast' + (type ? ' ' + type : '');
@@ -61,9 +53,7 @@
     setTimeout(() => el.remove(), 3500);
   }
 
-  // -----------------------------------------------------------------------
   // Render sidebar tags
-  // -----------------------------------------------------------------------
   function renderSidebar() {
     sidebarTags.innerHTML = '';
 
@@ -99,9 +89,7 @@
     });
   }
 
-  // -----------------------------------------------------------------------
   // Colour swatches
-  // -----------------------------------------------------------------------
   function renderColourRow() {
     colourRow.innerHTML = '';
     TAG_COLOURS.forEach(c => {
@@ -116,9 +104,7 @@
     });
   }
 
-  // -----------------------------------------------------------------------
   // Render paper list
-  // -----------------------------------------------------------------------
   function renderPapers() {
     paperList.innerHTML = '';
     const visible = filterPapers();
@@ -156,14 +142,12 @@
             <span class="meta-badge">${esc(paper.category || 'arXiv')}</span>
             ${paper.year ? `<span class="meta-badge">${paper.year}</span>` : ''}
             <span class="meta-badge">${esc(paper.source || 'Preprint')}</span>
-            <span class="meta-badge" style="font-family:monospace;font-size:10px">${esc(paper.arxiv_id)}</span>
           </div>
-          <div class="paper-tag-chips">${tagChips}</div>
         </div>
         <div class="paper-actions">
           <button class="btn-pdf" data-paper-id="${paper.id}">PDF</button>
+          <div class="paper-tag-chips">${tagChips}</div>
           <button class="btn-tag-paper" data-paper-id="${paper.id}">+ Tag</button>
-          <button class="btn-delete-paper" data-paper-id="${paper.id}">Delete</button>
         </div>`;
 
       // title click → viewer
@@ -182,14 +166,6 @@
       // tag assign
       row.querySelector('.btn-tag-paper').addEventListener('click', () => {
         openTagModal(paper.id);
-      });
-
-      // delete
-      row.querySelector('.btn-delete-paper').addEventListener('click', async () => {
-        if (!await customConfirm(`Remove "${paper.title}" from your library?`)) return;
-        await api('DELETE', `/api/papers/${paper.id}`);
-        toast('Paper removed');
-        await loadPapers();
       });
 
       // remove tag chip
@@ -238,9 +214,7 @@
     return list;
   }
 
-  // -----------------------------------------------------------------------
   // Tag assignment modal
-  // -----------------------------------------------------------------------
   function openTagModal(paperId) {
     tagPendingPaperId = paperId;
     const paper = papers.find(p => p.id === paperId);
@@ -291,9 +265,7 @@
     document.body.appendChild(backdrop);
   }
 
-  // -----------------------------------------------------------------------
   // Hugging Face modal
-  // -----------------------------------------------------------------------
   function openHfModal() {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
@@ -380,9 +352,7 @@
     input.focus();
   }
 
-  // -----------------------------------------------------------------------
   // Drag & drop upload
-  // -----------------------------------------------------------------------
   function initDropZone() {
     // Spec: "Drop any PDF anywhere on the page"
     document.addEventListener('dragover', e => {
@@ -442,9 +412,7 @@
     }
   }
 
-  // -----------------------------------------------------------------------
   // Data loading
-  // -----------------------------------------------------------------------
   async function loadTags() {
     tags = await api('GET', '/api/tags');
     renderSidebar();
@@ -459,9 +427,7 @@
     renderSidebar();
   }
 
-  // -----------------------------------------------------------------------
   // Add tag
-  // -----------------------------------------------------------------------
   btnAddTag.addEventListener('click', async () => {
     const name = tagNameInput.value.trim();
     if (!name) { tagNameInput.focus(); return; }
@@ -479,9 +445,7 @@
     if (e.key === 'Enter') btnAddTag.click();
   });
 
-  // -----------------------------------------------------------------------
   // Search
-  // -----------------------------------------------------------------------
   let _searchTimer = null;
   searchInput.addEventListener('input', () => {
     searchQuery = searchInput.value.trim();
@@ -502,14 +466,10 @@
     }
   });
 
-  // -----------------------------------------------------------------------
   // HF button
-  // -----------------------------------------------------------------------
   btnHf.addEventListener('click', openHfModal);
 
-  // -----------------------------------------------------------------------
   // Bulk Actions Event Listeners
-  // -----------------------------------------------------------------------
   
   paperList.addEventListener('change', (e) => {
     if (e.target.classList.contains('paper-checkbox')) {
@@ -541,9 +501,7 @@
     await loadPapers();
   });
 
-  // -----------------------------------------------------------------------
   // Utilities
-  // -----------------------------------------------------------------------
   function customConfirm(message) {
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
@@ -589,9 +547,7 @@
     return `rgb(${r},${g},${b})`;
   }
 
-  // -----------------------------------------------------------------------
   // Boot
-  // -----------------------------------------------------------------------
   async function init() {
     renderColourRow();
     await loadTags();
