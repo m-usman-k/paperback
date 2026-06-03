@@ -162,7 +162,7 @@ def _extract_arxiv_id_from_pdf(path: str) -> str | None:
 def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
     """Query the arXiv API and return a metadata dict, or None on failure.
 
-    Retries up to 3 times with exponential backoff when the API returns 429.
+    Retries up to 3 times with exponential backoff when the API returns 429 or times out.
     """
     clean_id = re.sub(r"v\d+$", "", arxiv_id)
     for attempt in range(3):
@@ -173,13 +173,22 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
                 timeout=10,
             )
         except requests.RequestException as e:
-            logger.error(f"Network error fetching metadata for {clean_id}: {e}")
-            return None
+            if attempt < 2:
+                logger.warning(f"Network error fetching metadata for {clean_id}: {e}. Retrying...")
+                time.sleep(3 * (attempt + 1))
+                continue
+            else:
+                logger.error(f"Failed to fetch metadata for {clean_id} after 3 attempts due to network errors.")
+                return None
 
         if resp.status_code == 429 or "Rate exceeded" in resp.text:
-            logger.warning(f"Rate limited by arXiv for {clean_id}. Retrying in {3 * (attempt + 1)}s...")
-            time.sleep(3 * (attempt + 1))
-            continue
+            if attempt < 2:
+                logger.warning(f"Rate limited by arXiv for {clean_id}. Retrying in {3 * (attempt + 1)}s...")
+                time.sleep(3 * (attempt + 1))
+                continue
+            else:
+                logger.error(f"Rate limited by arXiv for {clean_id} and ran out of retries.")
+                return None
 
         if not resp.ok:
             logger.error(f"arXiv API returned {resp.status_code} for {clean_id}")
