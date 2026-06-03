@@ -141,7 +141,7 @@ with Session(engine) as _s:
 # Helpers
 
 ARXIV_ID_RE = re.compile(r"\b(\d{4}\.\d{4,5}(?:v\d+)?)\b")
-ARXIV_API = "https://export.arxiv.org/api/query"
+ARXIV_API = "http://export.arxiv.org/api/query"
 NS = {"atom": "http://www.w3.org/2005/Atom"}
 
 
@@ -162,8 +162,8 @@ def _extract_arxiv_id_from_pdf(path: str) -> str | None:
 def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
     """Query the arXiv API and return a metadata dict, or None on failure.
 
-    Retries up to 3 times with exponential backoff when the API returns 429 or times out.
-    If arXiv completely fails, falls back to the Hugging Face API.
+    Attempts to query the arXiv API. If it is rate-limited, times out, or fails,
+    it falls back immediately to the Hugging Face API.
     """
     clean_id = re.sub(r"v\d+$", "", arxiv_id)
     
@@ -171,33 +171,14 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
     headers = {
         "User-Agent": "Paperback/1.0 (mailto:usmank.personal@outlook.com)"
     }
-    for attempt in range(3):
-        try:
-            resp = requests.get(
-                ARXIV_API,
-                params={"id_list": clean_id, "max_results": 1},
-                headers=headers,
-                timeout=10,
-            )
-        except requests.RequestException as e:
-            if attempt < 2:
-                logger.warning(f"Network error fetching metadata for {clean_id}: {e}. Retrying...")
-                time.sleep(3 * (attempt + 1))
-                continue
-            else:
-                logger.error(f"Failed to fetch metadata for {clean_id} after 3 attempts due to network errors.")
-                break # Fall back to HF
-
-        if resp.status_code == 429 or "Rate exceeded" in resp.text:
-            if attempt < 2:
-                logger.warning(f"Rate limited by arXiv for {clean_id}. Retrying in {3 * (attempt + 1)}s...")
-                time.sleep(3 * (attempt + 1))
-                continue
-            else:
-                logger.error(f"Rate limited by arXiv for {clean_id} and ran out of retries.")
-                break # Fall back to HF
-
-        if resp.ok:
+    try:
+        resp = requests.get(
+            ARXIV_API,
+            params={"id_list": clean_id, "max_results": 1},
+            headers=headers,
+            timeout=4,
+        )
+        if resp.ok and "Rate exceeded" not in resp.text and resp.status_code != 429:
             try:
                 root = ET.fromstring(resp.text)
                 entry = root.find("atom:entry", NS)
@@ -222,8 +203,11 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
                     }
             except ET.ParseError as e:
                 logger.error(f"Failed to parse XML for {clean_id}. Error: {e}")
-        
-        break # Break on non-retryable arXiv error to try HF
+        else:
+            reason = "Rate limited" if (resp.status_code == 429 or "Rate exceeded" in resp.text) else f"Status code {resp.status_code}"
+            logger.warning(f"arXiv API query failed for {clean_id}: {reason}")
+    except requests.RequestException as e:
+        logger.warning(f"arXiv API query timed out or failed for {clean_id}: {e}")
 
     # 2. Fall back to Hugging Face API
     logger.info(f"Falling back to Hugging Face API for metadata on {clean_id}...")
