@@ -49,9 +49,16 @@ LOGS_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOGS_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOGS_DIR, "app.log")
 
+class NoColorFormatter(logging.Formatter):
+    ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*[mK]')
+
+    def format(self, record):
+        formatted = super().format(record)
+        return self.ANSI_ESCAPE.sub('', formatted)
+
 file_handler = logging.FileHandler(LOG_FILE, encoding='utf-8')
 file_handler.setLevel(logging.INFO)
-file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_formatter = NoColorFormatter('%(asctime)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(file_formatter)
 
 console_handler = logging.StreamHandler()
