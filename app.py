@@ -163,8 +163,11 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
     """Query the arXiv API and return a metadata dict, or None on failure.
 
     Retries up to 3 times with exponential backoff when the API returns 429 or times out.
+    If arXiv completely fails, falls back to the Hugging Face API.
     """
     clean_id = re.sub(r"v\d+$", "", arxiv_id)
+    
+    # 1. Try arXiv API
     for attempt in range(3):
         try:
             resp = requests.get(
@@ -179,7 +182,7 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
                 continue
             else:
                 logger.error(f"Failed to fetch metadata for {clean_id} after 3 attempts due to network errors.")
-                return None
+                break # Fall back to HF
 
         if resp.status_code == 429 or "Rate exceeded" in resp.text:
             if attempt < 2:
@@ -188,43 +191,60 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
                 continue
             else:
                 logger.error(f"Rate limited by arXiv for {clean_id} and ran out of retries.")
-                return None
+                break # Fall back to HF
 
-        if not resp.ok:
-            logger.error(f"arXiv API returned {resp.status_code} for {clean_id}")
-            return None
+        if resp.ok:
+            try:
+                root = ET.fromstring(resp.text)
+                entry = root.find("atom:entry", NS)
+                if entry is not None:
+                    title = (entry.findtext("atom:title", "", NS) or "").strip().replace("\n", " ")
+                    authors = [
+                        a.findtext("atom:name", "", NS).strip()
+                        for a in entry.findall("atom:author", NS)
+                    ]
+                    published = entry.findtext("atom:published", "", NS)
+                    year = int(published[:4]) if published else None
+                    primary = entry.find("{http://arxiv.org/schemas/atom}primary_category")
+                    category = primary.get("term", "") if primary is not None else ""
 
-        try:
-            root = ET.fromstring(resp.text)
-        except ET.ParseError as e:
-            logger.error(f"Failed to parse XML for {clean_id}. Error: {e}")
-            return None
+                    return {
+                        "arxiv_id": clean_id,
+                        "title": title,
+                        "authors": authors,
+                        "year": year,
+                        "category": category,
+                        "source": "arXiv",
+                    }
+            except ET.ParseError as e:
+                logger.error(f"Failed to parse XML for {clean_id}. Error: {e}")
+        
+        break # Break on non-retryable arXiv error to try HF
 
-        entry = root.find("atom:entry", NS)
-        if entry is None:
-            logger.error(f"No entry found in arXiv response for {clean_id}")
-            return None
-
-        title = (entry.findtext("atom:title", "", NS) or "").strip().replace("\n", " ")
-        authors = [
-            a.findtext("atom:name", "", NS).strip()
-            for a in entry.findall("atom:author", NS)
-        ]
-        published = entry.findtext("atom:published", "", NS)
-        year = int(published[:4]) if published else None
-        primary = entry.find(
-            "{http://arxiv.org/schemas/atom}primary_category"
-        )
-        category = primary.get("term", "") if primary is not None else ""
-
-        return {
-            "arxiv_id": clean_id,
-            "title": title,
-            "authors": authors,
-            "year": year,
-            "category": category,
-            "source": "arXiv",
-        }
+    # 2. Fall back to Hugging Face API
+    logger.info(f"Falling back to Hugging Face API for metadata on {clean_id}...")
+    try:
+        hf_resp = requests.get(f"https://huggingface.co/api/papers/{clean_id}", timeout=10)
+        if hf_resp.ok:
+            d = hf_resp.json()
+            authors_raw = d.get("authors", [])
+            authors = [a.get("name", a) if isinstance(a, dict) else a for a in authors_raw]
+            
+            published = d.get("publishedAt", "")
+            year = int(published[:4]) if published else None
+            
+            return {
+                "arxiv_id": clean_id,
+                "title": d.get("title", ""),
+                "authors": authors,
+                "year": year,
+                "category": "",
+                "source": "arXiv (via HF)",
+            }
+        else:
+            logger.error(f"HF API fallback failed for {clean_id} with status {hf_resp.status_code}")
+    except Exception as e:
+        logger.error(f"HF API fallback failed for {clean_id} due to error: {e}")
 
     return None
 
