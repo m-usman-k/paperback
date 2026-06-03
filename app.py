@@ -169,7 +169,7 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
     
     # 1. Try arXiv API
     headers = {
-        "User-Agent": "Paperback/1.0 (mailto:usmank.personal@outlook.com)"
+        "User-Agent": "Paperback/1.0 (+https://github.com/m-usman-k/paperback; contact: usmank.personal@outlook.com)"
     }
     try:
         resp = requests.get(
@@ -184,23 +184,26 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
                 entry = root.find("atom:entry", NS)
                 if entry is not None:
                     title = (entry.findtext("atom:title", "", NS) or "").strip().replace("\n", " ")
-                    authors = [
-                        a.findtext("atom:name", "", NS).strip()
-                        for a in entry.findall("atom:author", NS)
-                    ]
-                    published = entry.findtext("atom:published", "", NS)
-                    year = int(published[:4]) if published else None
-                    primary = entry.find("{http://arxiv.org/schemas/atom}primary_category")
-                    category = primary.get("term", "") if primary is not None else ""
+                    if title.lower() == "error" or "error:" in title.lower():
+                        logger.warning(f"arXiv returned error entry for {clean_id}: {entry.findtext('atom:summary', '', NS)}")
+                    else:
+                        authors = [
+                            a.findtext("atom:name", "", NS).strip()
+                            for a in entry.findall("atom:author", NS)
+                        ]
+                        published = entry.findtext("atom:published", "", NS)
+                        year = int(published[:4]) if published else None
+                        primary = entry.find("{http://arxiv.org/schemas/atom}primary_category")
+                        category = primary.get("term", "") if primary is not None else ""
 
-                    return {
-                        "arxiv_id": clean_id,
-                        "title": title,
-                        "authors": authors,
-                        "year": year,
-                        "category": category,
-                        "source": "arXiv",
-                    }
+                        return {
+                            "arxiv_id": clean_id,
+                            "title": title,
+                            "authors": authors,
+                            "year": year,
+                            "category": category,
+                            "source": "arXiv",
+                        }
             except ET.ParseError as e:
                 logger.error(f"Failed to parse XML for {clean_id}. Error: {e}")
         else:
@@ -745,7 +748,7 @@ def hf_import():
     pdf_url = f"https://arxiv.org/pdf/{clean_id}.pdf"
     dest = os.path.join(PDF_DIR, f"{clean_id}.pdf")
     headers = {
-        "User-Agent": "Paperback/1.0 (mailto:usmank.personal@outlook.com)"
+        "User-Agent": "Paperback/1.0 (+https://github.com/m-usman-k/paperback; contact: usmank.personal@outlook.com)"
     }
     try:
         r = requests.get(pdf_url, headers=headers, timeout=30, stream=True)
