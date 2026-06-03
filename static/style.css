@@ -316,6 +316,11 @@ button {
   color: var(--accent);
 }
 
+#drop-zone.loading {
+  pointer-events: none;
+  opacity: 0.85;
+}
+
 #drop-zone svg {
   margin-bottom: 8px;
   opacity: .6;

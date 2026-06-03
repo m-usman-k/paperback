@@ -422,6 +422,14 @@
   }
 
   async function uploadFile(file) {
+    const originalHTML = dropZone.innerHTML;
+    dropZone.classList.add('loading');
+    dropZone.innerHTML = `
+      <div class="spinner-loader"></div>
+      <strong style="display: block; margin-top: 8px;">Uploading & processing ${esc(file.name)}…</strong>
+      <span class="upload-status-text">Extracting text and fetching metadata</span>
+    `;
+
     uploadProgress.style.display = '';
     const label = uploadProgress.querySelector('.label');
     label.textContent = `Uploading ${file.name}…`;
@@ -429,12 +437,16 @@
     let timeElapsed = 0;
     const interval = setInterval(() => {
       timeElapsed += 1;
+      const statusText = dropZone.querySelector('.upload-status-text');
       if (timeElapsed >= 3 && timeElapsed < 12) {
         label.textContent = `Processing ${file.name}: Querying arXiv for metadata…`;
+        if (statusText) statusText.textContent = `Querying arXiv for metadata…`;
       } else if (timeElapsed >= 12 && timeElapsed < 22) {
         label.textContent = `Processing ${file.name}: arXiv is slow, retrying query…`;
+        if (statusText) statusText.textContent = `arXiv is slow, retrying query…`;
       } else if (timeElapsed >= 22) {
         label.textContent = `Processing ${file.name}: arXiv timed out, falling back to Hugging Face…`;
+        if (statusText) statusText.textContent = `arXiv timed out, falling back to Hugging Face…`;
       }
     }, 1000);
 
@@ -456,6 +468,8 @@
     } finally {
       clearInterval(interval);
       uploadProgress.style.display = 'none';
+      dropZone.classList.remove('loading');
+      dropZone.innerHTML = originalHTML;
     }
   }
 
