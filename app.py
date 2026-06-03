@@ -168,11 +168,15 @@ def _fetch_arxiv_metadata(arxiv_id: str) -> dict | None:
     clean_id = re.sub(r"v\d+$", "", arxiv_id)
     
     # 1. Try arXiv API
+    headers = {
+        "User-Agent": "Paperback/1.0 (mailto:usmank.personal@outlook.com)"
+    }
     for attempt in range(3):
         try:
             resp = requests.get(
                 ARXIV_API,
                 params={"id_list": clean_id, "max_results": 1},
+                headers=headers,
                 timeout=10,
             )
         except requests.RequestException as e:
@@ -756,8 +760,11 @@ def hf_import():
 
     pdf_url = f"https://arxiv.org/pdf/{clean_id}.pdf"
     dest = os.path.join(PDF_DIR, f"{clean_id}.pdf")
+    headers = {
+        "User-Agent": "Paperback/1.0 (mailto:usmank.personal@outlook.com)"
+    }
     try:
-        r = requests.get(pdf_url, timeout=30, stream=True)
+        r = requests.get(pdf_url, headers=headers, timeout=30, stream=True)
         r.raise_for_status()
         with open(dest, "wb") as fh:
             for chunk in r.iter_content(65536):
