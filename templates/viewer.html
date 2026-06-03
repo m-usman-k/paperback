@@ -731,7 +731,33 @@
     container.addEventListener('scroll', async () => {
       const visible = Math.ceil((container.scrollTop + container.clientHeight) / (container.scrollHeight / pdfDoc.numPages));
       const upTo = Math.min(visible + 2, pdfDoc.numPages);
-      for (let i = currentPage; i <= upTo; i++) await renderPage(i);
+      for (let i = 1; i <= upTo; i++) await renderPage(i);
+
+      // Identify currently active page based on viewport scroll position
+      const wraps = container.querySelectorAll('.pdf-page-wrap');
+      const containerRect = container.getBoundingClientRect();
+      const centerY = containerRect.top + containerRect.height / 2;
+
+      let closestPage = null;
+      let minDistance = Infinity;
+
+      wraps.forEach(wrap => {
+        const rect = wrap.getBoundingClientRect();
+        const pageCenterY = rect.top + rect.height / 2;
+        const distance = Math.abs(pageCenterY - centerY);
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestPage = wrap;
+        }
+      });
+
+      if (closestPage) {
+        const pageNum = parseInt(closestPage.dataset.page);
+        if (pageNum !== currentPage) {
+          currentPage = pageNum;
+          updateNav();
+        }
+      }
     });
   }
 
