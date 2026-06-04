@@ -132,22 +132,40 @@
       row.className = 'paper-row';
       row.dataset.paperId = paper.id;
       row.innerHTML = `
-        <input type="checkbox" class="paper-checkbox" aria-label="Select paper" data-paper-id="${paper.id}">
+        <div class="checkbox-col">
+          <input type="checkbox" class="paper-checkbox" aria-label="Select paper" data-paper-id="${paper.id}">
+          <svg class="drag-handle" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="5" r="1.5"/><circle cx="9" cy="19" r="1.5"/>
+            <circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="15" cy="19" r="1.5"/>
+          </svg>
+        </div>
         <div class="paper-body">
-          <div class="paper-title" tabindex="0" role="button"
-               aria-label="Open ${esc(paper.title)}"
-               data-paper-id="${paper.id}">${esc(paper.title)}</div>
+          <div class="paper-title-container">
+            <div class="paper-title" tabindex="0" role="button"
+                 aria-label="Open ${esc(paper.title)}"
+                 data-paper-id="${paper.id}">${esc(paper.title)}</div>
+          </div>
           <div class="paper-authors">${esc(authors)}</div>
-          <div class="paper-meta">
-            <span class="meta-badge">${esc(paper.category || 'arXiv')}</span>
-            ${paper.year ? `<span class="meta-badge">${paper.year}</span>` : ''}
-            <span class="meta-badge">${esc(paper.source || 'Preprint')}</span>
+          <div class="paper-meta-line">
+            <span class="meta-green">${esc(paper.source || 'arXiv')}${paper.category ? ` [${esc(paper.category)}]` : ''}</span>
+            <span class="meta-sep">·</span>
+            <span class="meta-gray">${paper.year || ''}</span>
+            <span class="meta-sep">·</span>
+            <span class="meta-gray">Preprint</span>
+            <div class="paper-tag-chips">${tagChips}</div>
+            <button class="btn-tag-paper-inline" data-paper-id="${paper.id}" title="Add Tag">+</button>
+          </div>
+          <div class="paper-icons-row">
+            <svg class="icon-doc" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <div class="icon-clip-wrap">
+              <svg class="icon-clip" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              <span class="clip-count">1</span>
+            </div>
+            <svg class="icon-bubble" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           </div>
         </div>
         <div class="paper-actions">
           <button class="btn-pdf" data-paper-id="${paper.id}">PDF</button>
-          <div class="paper-tag-chips">${tagChips}</div>
-          <button class="btn-tag-paper" data-paper-id="${paper.id}">+ Tag</button>
         </div>`;
 
       // title click → viewer
@@ -164,7 +182,7 @@
       });
 
       // tag assign
-      row.querySelector('.btn-tag-paper').addEventListener('click', () => {
+      row.querySelector('.btn-tag-paper-inline').addEventListener('click', () => {
         openTagModal(paper.id);
       });
 
@@ -196,6 +214,17 @@
     bulkActions.style.display = 'flex';
     const checkboxes = Array.from(document.querySelectorAll('.paper-checkbox'));
     const checked = checkboxes.filter(cb => cb.checked);
+    
+    checkboxes.forEach(cb => {
+      const row = cb.closest('.paper-row');
+      if (row) {
+        if (cb.checked) {
+          row.classList.add('selected');
+        } else {
+          row.classList.remove('selected');
+        }
+      }
+    });
     
     cbSelectAll.checked = checkboxes.length > 0 && checked.length === checkboxes.length;
     cbSelectAll.indeterminate = checked.length > 0 && checked.length < checkboxes.length;
