@@ -385,7 +385,7 @@ def upload_pdf():
                 "authors": authors,
                 "year": datetime.datetime.now().year,
                 "category": "",
-                "source": "Local Upload",
+                "source": "arXiv",
             }
 
         with Session(engine) as s:
