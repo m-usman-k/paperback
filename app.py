@@ -351,12 +351,10 @@ def upload_pdf():
 
         arxiv_id = _extract_arxiv_id_from_pdf(tmp_path)
         if not arxiv_id:
-            logger.info("No arXiv ID found in PDF. Generating a local ID.")
-            arxiv_id = f"local-{uuid.uuid4().hex[:8]}"
+            logger.info("Upload rejected: No arXiv ID found in PDF")
+            return jsonify({"error": "No arXiv ID found in this PDF"}), 422
 
-        meta = None
-        if not arxiv_id.startswith("local-"):
-            meta = _fetch_arxiv_metadata(arxiv_id)
+        meta = _fetch_arxiv_metadata(arxiv_id)
             
         if not meta:
             logger.warning(f"Could not fetch metadata for {arxiv_id}. Falling back to PDF metadata.")
