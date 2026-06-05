@@ -351,13 +351,42 @@ def upload_pdf():
 
         arxiv_id = _extract_arxiv_id_from_pdf(tmp_path)
         if not arxiv_id:
-            logger.info("Upload rejected: No arXiv ID found in PDF")
-            return jsonify({"error": "No arXiv ID found in this PDF"}), 422
+            logger.info("No arXiv ID found in PDF. Generating a local ID.")
+            arxiv_id = f"local-{uuid.uuid4().hex[:8]}"
 
-        meta = _fetch_arxiv_metadata(arxiv_id)
+        meta = None
+        if not arxiv_id.startswith("local-"):
+            meta = _fetch_arxiv_metadata(arxiv_id)
+            
         if not meta:
-            logger.error(f"Upload failed: Could not fetch metadata for {arxiv_id}")
-            return jsonify({"error": "Could not fetch metadata from arXiv"}), 502
+            logger.warning(f"Could not fetch metadata for {arxiv_id}. Falling back to PDF metadata.")
+            doc = fitz.open(tmp_path)
+            pdf_meta = doc.metadata
+            doc.close()
+            
+            title = pdf_meta.get("title")
+            if not title or title.strip() == "":
+                title = f.filename if f.filename else "Unknown Document"
+                if title.lower().endswith(".pdf"):
+                    title = title[:-4]
+                    
+            authors_str = pdf_meta.get("author") or ""
+            if ";" in authors_str:
+                authors = [a.strip() for a in authors_str.split(";") if a.strip()]
+            elif "," in authors_str:
+                authors = [a.strip() for a in authors_str.split(",") if a.strip()]
+            else:
+                authors = [authors_str.strip()] if authors_str.strip() else []
+                
+            clean_id = re.sub(r"v\d+$", "", arxiv_id)
+            meta = {
+                "arxiv_id": clean_id,
+                "title": title,
+                "authors": authors,
+                "year": datetime.datetime.now().year,
+                "category": "",
+                "source": "Local Upload",
+            }
 
         with Session(engine) as s:
             existing = s.query(Paper).filter_by(arxiv_id=meta["arxiv_id"]).first()
